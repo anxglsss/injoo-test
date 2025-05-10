@@ -2,36 +2,147 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+
 import coffee from '../../public/photo_2025-05-11_00-51-00.jpg';
 
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ItemService } from '@/api/item.service';
+import { CreateOrderRequest, OrderService } from '@/api/order.service';
 
-const coffeeFormSchema = z.object({
-  size: z.string().min(1, 'Выберите размер'),
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+const formSchema = z.object({
+  size: z.string(),
+  extra: z.array(z.string()).optional(),
+  sugar: z.string(),
+  temperature: z.string(),
 });
 
-type CoffeeForm = z.infer<typeof coffeeFormSchema>;
+type CoffeeForm = z.infer<typeof formSchema>;
 
 export default function HomePage() {
   const [open, setOpen] = useState(false);
+  const [productId, setProductId] = useState<number | null>(null);
+  const [productName, setProductName] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+
+  const basePrice = 2200;
+  const [totalPrice, setTotalPrice] = useState(basePrice);
+
+  const sizePrices: Record<string, number> = {
+    '0.5': 0,
+    '0.7': 200,
+  };
+
+  const extraPrices: Record<string, number> = {
+    extraPearl: 300,
+    altMilk: 300,
+    taroPearl: 300,
+  };
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const products = await ItemService.getAll();
+        if (products.length > 0) {
+          const product = products[0];
+          setProductId(product.id);
+          setProductName(product.name);
+          setProductDescription(product.description);
+        }
+      } catch (error) {
+        console.error('Ошибка при загрузке продуктов:', error);
+      }
+    };
+
+    fetchProducts();
+  }, []);
 
   const form = useForm<CoffeeForm>({
-    resolver: zodResolver(coffeeFormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       size: '',
+      extra: [],
+      sugar: '',
+      temperature: '',
     },
   });
 
-  const onSubmit = (data: CoffeeForm) => {
-    console.log('Форма отправлена:', data);
-    // axios.post('/api/order', data)
-    setOpen(false);
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      const selectedSize = value.size;
+      const selectedExtras = value.extra ?? [];
+
+      const sizePrice = sizePrices[selectedSize ?? ''] || 0;
+      const extrasPrice = selectedExtras.reduce(
+        (sum, extra) => sum + (extra && extraPrices[extra] ? extraPrices[extra] : 0),
+        0
+      );
+
+      setTotalPrice(basePrice + sizePrice + extrasPrice);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  const onSubmit = async (data: CoffeeForm) => {
+    const labelMap: Record<string, string> = {
+      normal: 'Стандартная порция',
+      more: 'Больше сахара',
+      less: 'Меньше сахара',
+      none: 'Без Сахара',
+      noIce: 'Без льда',
+      lessIce: 'Меньше льда',
+      standardIce: 'Стандартная порция льда',
+      taroPearl: 'Жемчуг таро',
+      altMilk: 'Альтернативное молоко',
+      extraPearl: 'Доп. порция жемчуг',
+    };
+
+    const orderData: CreateOrderRequest = {
+      phoneNumber: '+77011234567',
+      productId: productId || 2,
+      quantity: 1,
+      price: totalPrice,
+      selectedAttributes: {
+        'Объем': data.size,
+        'Дополнительно': (data.extra ?? []).map((e) => labelMap[e] || e),
+        'Сахар': labelMap[data.sugar] || data.sugar,
+        'Температура напитка': labelMap[data.temperature] || data.temperature,
+      },
+    };
+
+    try {
+      await OrderService.createOrder(orderData);
+      setOpen(false);
+      console.log('Заказ успешно отправлен!');
+    } catch (error) {
+      alert('Ошибка при создании заказа');
+      console.log(error);
+    }
   };
 
   return (
@@ -42,50 +153,129 @@ export default function HomePage() {
           alt="Coffee"
           width={400}
           height={250}
-          className="w-full h-64 object-cover"
+          className="w-full h-64 object-cover rounded-t-xl"
         />
-        <div className="p-4">
-          <h2 className="text-2xl font-bold mb-2">Кофе латте</h2>
-          <p className="text-gray-600 mb-4">
-            Нежный латте с ванильной пенкой и ароматным эспрессо.
-          </p>
+        <div className="p-6">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-2">{productName}</h2>
+          <p className="text-gray-600 text-sm mb-4">{productDescription}</p>
           <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold">₸ 1200</span>
-            <Button onClick={() => setOpen(true)}>Заказать</Button>
+            <span className="text-lg font-semibold text-[#D53F8C]">₸ 2200</span>
+            <Button onClick={() => setOpen(true)} className="bg-[#D53F8C] text-white hover:bg-[#B83280] transition duration-300">
+              Заказать
+            </Button>
           </div>
         </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg bg-white p-6 rounded-lg shadow-xl">
           <DialogHeader>
-            <DialogTitle>Оформление заказа</DialogTitle>
+            <DialogTitle className="text-2xl font-extrabold text-center">Оформление заказа</DialogTitle>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
               <FormField
                 control={form.control}
                 name="size"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Размер напитка</FormLabel>
+                  <FormItem className="space-y-2">
+                    <FormLabel className="font-medium text-gray-700">Объем</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите размер" />
+                        <SelectTrigger className="border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#D53F8C]">
+                          <SelectValue placeholder="Выберите" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="small">Маленький</SelectItem>
-                        <SelectItem value="medium">Средний</SelectItem>
-                        <SelectItem value="large">Большой</SelectItem>
+                        <SelectItem value="0.5">Орео 0.5</SelectItem>
+                        <SelectItem value="0.7">Орео 0.7 (+200₸)</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-sm text-red-500" />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
+
+              <FormField
+                control={form.control}
+                name="extra"
+                render={() => (
+                  <FormItem className="space-y-2">
+                    <FormLabel className="font-medium text-gray-700">Дополнительно</FormLabel>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { label: 'Жемчуг таро (+300₸)', value: 'taroPearl' },
+                        { label: 'Альтернативное молоко (+300₸)', value: 'altMilk' },
+                        { label: 'Доп. порция жемчуг (+300₸)', value: 'extraPearl' },
+                      ].map((item) => (
+                        <label key={item.value} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            value={item.value}
+                            {...form.register('extra')}
+                            className="rounded-lg"
+                          />
+                          {item.label}
+                        </label>
+                      ))}
+                    </div>
+                    <FormMessage className="text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="sugar"
+                render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel className="font-medium text-gray-700">Сахар</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#D53F8C]">
+                          <SelectValue placeholder="Выберите" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="normal">Стандартная порция</SelectItem>
+                        <SelectItem value="more">Больше сахара</SelectItem>
+                        <SelectItem value="less">Меньше сахара</SelectItem>
+                        <SelectItem value="none">Без сахара</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage className="text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="temperature"
+                render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel className="font-medium text-gray-700">Температура напитка</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#D53F8C]">
+                          <SelectValue placeholder="Выберите" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="noIce">Без льда</SelectItem>
+                        <SelectItem value="lessIce">Меньше льда</SelectItem>
+                        <SelectItem value="standardIce">Стандартная порция льда</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage className="text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+
+              <div className="text-right text-lg font-semibold text-[#D53F8C]">
+                Общая сумма: ₸ {totalPrice}
+              </div>
+
+              <Button type="submit" className="w-full bg-[#D53F8C] hover:bg-[#B83280] text-white transition duration-300">
                 Подтвердить заказ
               </Button>
             </form>

@@ -142,3 +142,38 @@
     @apply bg-background text-foreground;
   }
 }
+
+body {
+  position: relative;
+  background-color: #ffe6f0; /* light pink fallback */
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 200%;
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 105, 180, 0.3) 20px,
+      rgba(255, 105, 180, 0.3) 40px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 182, 193, 0.3) 20px,
+      rgba(255, 182, 193, 0.3) 40px
+    );
+  z-index: -1;
+  opacity: 0.3;
+  transform: rotate(-10deg);
+  pointer-events: none;
+}
+
